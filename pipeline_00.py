@@ -4,18 +4,62 @@ import duckdb
 import pandas as pd
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from datetime import datetime
 
 
 load_dotenv()
 
-# Função para baixar arquivos de um diretório google drive
+def conectar_banco():
+    """
+    Conecta ao banco de dados DuckDB, cria o banco se não existir
+    """
+    return duckdb.connect(database='duck.db', read_only=False)
+
+
+def inicializar_tabela(con):
+    """
+    Cria a tabela se ela não existir 
+    """
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS historico_arquivos (
+                nome_arquivo VARCHAR,
+                horario_processamento TIMESTAMP
+        )
+    """)
+
+
+def registrar_arquivo(con, nome_arquivo):
+    """
+    Registra um novo arquivo no banco de dados com o horário atual
+    """
+    con.execute("""
+        INSERT INTO historico_arquivos (nome_arquivo, horario_processamento)
+        VALUES (?, ?)
+    """, (nome_arquivo, datetime.now()))
+
+
+def arquivos_processados(con):
+    """
+    Retorna um set com os nomes de todos os arquivos já processados.
+    """ 
+    return set(row[0] for row in con.execute("""
+        SELECT nome_arquivo FROM historico_arquivos
+        """).fetchall())
+
+
 def baixar_os_arquivos_do_google_drive(url_pasta, diretorio_local):
+    """
+    Função para baixar arquivos de um diretório google drive
+    """
     os.makedirs(diretorio_local, exist_ok=True)
     gdown.download_folder(url_pasta, output=diretorio_local, quiet=False, use_cookies=False)
 
 
-# Função para listar os arquivos CSV no diretório especificado
+
 def listar_arquivos_csv(diretorio):
+    """
+    Função para listar os arquivos CSV no diretório especificado
+    """
     arquivos_csv = []
     todos_os_arquivos = os.listdir(diretorio)
     for arquivo in todos_os_arquivos:
@@ -28,8 +72,6 @@ def listar_arquivos_csv(diretorio):
 # Função para ler um arquivo CSV e retornar um DataFrame
 def ler_csv(caminho_do_arquivo):
     data_frame_duckdb = duckdb.read_csv(caminho_do_arquivo)
-    print(data_frame_duckdb)
-    print(type(data_frame_duckdb))
     return data_frame_duckdb
 
 
@@ -56,7 +98,17 @@ if __name__ == '__main__':
 
     # baixar_os_arquivos_do_google_drive(url_pasta, diretorio_local)
     lista_arquivos = listar_arquivos_csv(diretorio_local)
+    con = conectar_banco()
+    inicializar_tabela(con)
+    processados = arquivos_processados(con)
+
     for caminho_arquivo in lista_arquivos:
-        duckdb_df = ler_csv(caminho_arquivo)
-        pandas_df_transformado = transformar(duckdb_df)
-        salvar_no_postgres(pandas_df_transformado, "vendas_calculado")
+        nome_arquivo = os.path.basename(caminho_arquivo)
+        if nome_arquivo not in processados:
+            df = ler_csv(caminho_arquivo)
+            df_transformado = transformar(df)
+            salvar_no_postgres(df_transformado, "vendas_calculado")
+            registrar_arquivo(con, nome_arquivo)
+            print(f"Arquivo {nome_arquivo} processado e salvo.")
+        else:
+            print(f"Arquivo {nome_arquivo} já foi processado anteriormente.")

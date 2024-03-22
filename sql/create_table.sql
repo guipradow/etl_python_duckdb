@@ -13,6 +13,6 @@ CREATE TABLE vendas_calculado (
   valor DECIMAL(10, 2) NOT NULL,
   quantidade INT NOT NULL,
   cliente_id INT NOT NULL,
-  categoria VARCHAR(255) NOT NULL
-  total_vendas DECIMAL(10, 2) NOT NULL,
+  categoria VARCHAR(255) NOT NULL,
+  total_vendas DECIMAL(10, 2) NOT NULL
 );
